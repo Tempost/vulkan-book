@@ -1,0 +1,30 @@
+[
+    {
+        "arguments": [
+            "g++",
+            "-c",
+            "-std=c++17",
+            "-O2",
+            "-Iinclude",
+            "-o",
+            "VulkanTest",
+            "src/vulkan_triangle.cpp"
+        ],
+        "directory": "/home/cody/Source/c_cpp/vulkan",
+        "file": "src/vulkan_triangle.cpp"
+    },
+    {
+        "arguments": [
+            "g++",
+            "-c",
+            "-std=c++17",
+            "-O2",
+            "-Iinclude",
+            "-o",
+            "VulkanTest",
+            "src/hello_vulkan.cpp"
+        ],
+        "directory": "/home/cody/Source/c_cpp/vulkan",
+        "file": "src/hello_vulkan.cpp"
+    }
+]
