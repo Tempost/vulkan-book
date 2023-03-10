@@ -2,8 +2,11 @@
 #include <vulkan/vulkan_core.h>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <set>
 #include <vector>
@@ -22,11 +25,16 @@ private:
   VkQueue graphicsQueue;
   VkQueue presentQueue;
   VkSurfaceKHR surface;
+  VkSwapchainKHR swapChain;
+
   const std::vector<const char *> validationLayers = {
       "VK_LAYER_KHRONOS_validation"};
 
   const std::vector<const char *> deviceExtensions = {
       VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+
+  std::vector<VkImage> swapChainImages;
+  std::vector<VkImageView> swapChainImageViews;
 
   struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
@@ -51,6 +59,10 @@ private:
   void createSurface();
 
   void createLogicalDevice();
+
+  void createSwapChain();
+
+  void createImageViews();
 
   bool verifyExtensions(const char **glfwExtensions,
                         uint32_t glfwExtensionCount);

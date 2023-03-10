@@ -1,4 +1,5 @@
 #include "../include/vulkan_triangle.hpp"
+#include <cstdint>
 #include <stdexcept>
 #include <vulkan/vulkan_core.h>
 using namespace VulkanApp;
@@ -26,6 +27,8 @@ void VulkanTriangleApplication::initVulkan() {
   createSurface();
   pickPhysicalDevice();
   createLogicalDevice();
+  createSwapChain();
+  createImageViews();
 }
 
 void VulkanTriangleApplication::createInstance() {
@@ -121,6 +124,71 @@ void VulkanTriangleApplication::createLogicalDevice() {
   vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
 }
 
+void VulkanTriangleApplication::createSwapChain() {
+  VkSurfaceFormatKHR surfaceFormat =
+      chooseSwapSurfaceFormat(swapChainDetails.formats);
+  VkPresentModeKHR presentMode =
+      chooseSwapPresentMode(swapChainDetails.presentModes);
+  VkExtent2D extent = chooseSwapExtent(swapChainDetails.capabilities);
+
+  // sticking to the min means we might have the wait for the driver to complete
+  // ops before fetching another image to render to. min + 1 is a work around
+  uint32_t imageCount = swapChainDetails.capabilities.minImageCount + 1;
+
+  // Zero is special value, meaning no maxImageCount
+  // checking if we excede the maxImageCount
+  if (swapChainDetails.capabilities.maxImageCount > 0 &&
+      imageCount > swapChainDetails.capabilities.maxImageCount) {
+    imageCount = swapChainDetails.capabilities.maxImageCount;
+  }
+
+  VkSwapchainCreateInfoKHR createInfo{};
+  createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+  createInfo.surface = surface;
+  createInfo.minImageCount = imageCount;
+  createInfo.imageFormat = surfaceFormat.format;
+  createInfo.imageColorSpace = surfaceFormat.colorSpace;
+  createInfo.imageExtent = extent;
+  createInfo.imageArrayLayers = 1;
+  // Might use VK_IMAGE_USAGE_TRANSFER_DST_BIT for doing post processing
+  createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+  uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(),
+                                   indices.presentFamily.value()};
+
+  if (indices.graphicsFamily != indices.presentFamily) {
+    // No ownership handling of images
+    createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+    createInfo.queueFamilyIndexCount = 2;
+    createInfo.pQueueFamilyIndices = queueFamilyIndices;
+  } else {
+    // Ownership handling
+    createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  }
+
+  // currentTransform says "Do nothing to this image"
+  createInfo.preTransform = swapChainDetails.capabilities.currentTransform;
+  // Ignore alpha channel so we don't blend with windowing system
+  createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+  createInfo.presentMode = presentMode;
+  // Ignore hidden pixels
+  createInfo.clipped = VK_TRUE;
+  createInfo.oldSwapchain = VK_NULL_HANDLE;
+
+  if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain) !=
+      VK_SUCCESS) {
+    throw std::runtime_error("Failed to create swap chain!");
+  }
+
+  vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
+  swapChainImages.resize(imageCount);
+  vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data());
+}
+
+/* void VulkanTriangleApplication::createImageViews() { */
+/*   swapChainImageViews.resize(jk); */
+/* } */
+
 bool VulkanTriangleApplication::verifyExtensions(const char **glfwExtensions,
                                                  uint32_t glfwExtensionCount) {
   uint32_t extensionCount = 0;
@@ -172,6 +240,7 @@ bool VulkanTriangleApplication::isDeviceSuitable(VkPhysicalDevice device) {
 
   bool swapChainAdequate = false;
   if (extensionsSupported) {
+    querySwapChainSupport(device);
     swapChainAdequate = !swapChainDetails.formats.empty() &&
                         !swapChainDetails.presentModes.empty();
   }
@@ -224,6 +293,25 @@ VkPresentModeKHR VulkanTriangleApplication::chooseSwapPresentMode(
 
 VkExtent2D VulkanTriangleApplication::chooseSwapExtent(
     const VkSurfaceCapabilitiesKHR &capabilities) {
+  if (capabilities.currentExtent.width !=
+      std::numeric_limits<uint32_t>::max()) {
+    return capabilities.currentExtent;
+  } else {
+    int width, height;
+    glfwGetFramebufferSize(window, &width, &height);
+
+    VkExtent2D actualExtent = {static_cast<uint32_t>(width),
+                               static_cast<uint32_t>(height)};
+
+    actualExtent.width =
+        std::clamp(actualExtent.width, capabilities.minImageExtent.width,
+                   capabilities.maxImageExtent.width);
+    actualExtent.height =
+        std::clamp(actualExtent.height, capabilities.minImageExtent.height,
+                   capabilities.maxImageExtent.height);
+
+    return actualExtent;
+  }
 }
 
 void VulkanTriangleApplication::findQueueFamilies(VkPhysicalDevice device) {
@@ -316,9 +404,12 @@ void VulkanTriangleApplication::mainLoop() {
 }
 
 void VulkanTriangleApplication::cleanup() {
+  vkDestroySwapchainKHR(device, swapChain, nullptr);
+
   vkDestroyDevice(device, nullptr);
 
   vkDestroySurfaceKHR(instance, surface, nullptr);
+
   vkDestroyInstance(instance, nullptr);
 
   glfwDestroyWindow(window);
