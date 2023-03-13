@@ -8,10 +8,10 @@
             "-Iinclude",
             "-o",
             "VulkanTest",
-            "src/vulkan_triangle.cpp"
+            "src/hello_vulkan.cpp"
         ],
         "directory": "/home/cody/Source/c_cpp/vulkan",
-        "file": "src/vulkan_triangle.cpp"
+        "file": "src/hello_vulkan.cpp"
     },
     {
         "arguments": [
@@ -22,9 +22,9 @@
             "-Iinclude",
             "-o",
             "VulkanTest",
-            "src/hello_vulkan.cpp"
+            "src/vulkan_triangle.cpp"
         ],
         "directory": "/home/cody/Source/c_cpp/vulkan",
-        "file": "src/hello_vulkan.cpp"
+        "file": "src/vulkan_triangle.cpp"
     }
 ]

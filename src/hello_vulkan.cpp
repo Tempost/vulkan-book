@@ -5,15 +5,20 @@
 #include "../include/vulkan_triangle.hpp"
 using namespace VulkanApp;
 
-int main() {
-  VulkanTriangleApplication app; 
+int
+main ()
+{
+  VulkanTriangleApplication app;
 
-  try {
-    app.run();
-  } catch (const std::exception &e) {
-    std::cerr << e.what() << std::endl;
-    return EXIT_FAILURE;
-  }
+  try
+    {
+      app.run ();
+    }
+  catch (const std::exception &e)
+    {
+      std::cerr << e.what () << std::endl;
+      return EXIT_FAILURE;
+    }
 
   return EXIT_SUCCESS;
 }
