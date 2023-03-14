@@ -5,6 +5,7 @@
 #include <fstream>
 #include <set>
 #include <stdexcept>
+#include <vulkan/vulkan_core.h>
 using namespace VulkanApp;
 
 const uint32_t WIDTH = 800;
@@ -308,6 +309,63 @@ VulkanTriangleApplication::createGraphicsPipeline ()
 
   VkPipelineShaderStageCreateInfo shaderStages[]
       = { vertShaderStageInfo, fragShaderStageInfo };
+
+  std::vector<VkDynamicState> dynamicStates
+      = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+
+  VkPipelineDynamicStateCreateInfo dynamicState{};
+  dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+  dynamicState.dynamicStateCount
+      = static_cast<uint32_t> (dynamicStates.size ());
+  dynamicState.pDynamicStates = dynamicStates.data ();
+
+  VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+  vertexInputInfo.sType
+      = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+  // We hardcoded vertext data into the shader so we don't need to fill in
+  // anything else in this struct
+  vertexInputInfo.vertexBindingDescriptionCount = 0;
+  vertexInputInfo.vertexAttributeDescriptionCount = 0;
+
+  VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+  inputAssembly.sType
+      = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+  // Since we are 'hand' drawing triangles these settings are fine
+  inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+  inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+  VkViewport viewport{};
+  viewport.x = 0.0f;
+  viewport.y = 0.0f;
+  viewport.width = (float)swapChainExtent.width;
+  viewport.height = (float)swapChainExtent.height;
+  viewport.minDepth = 0.0f;
+  viewport.maxDepth = 1.0f;
+
+  VkRect2D scissor{};
+  scissor.offset = { 0, 0 };
+  scissor.extent = swapChainExtent;
+
+  VkPipelineViewportStateCreateInfo viewportState{};
+  viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+  viewportState.viewportCount = 1;
+  viewportState.pViewports = &viewport;
+  viewportState.scissorCount = 1;
+  viewportState.pScissors = &scissor;
+
+  VkPipelineRasterizationStateCreateInfo rasterizer{};
+  rasterizer.sType
+      = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+  // VK_TRUE here requires GPU feature
+  rasterizer.depthClampEnable = VK_FALSE;
+  rasterizer.rasterizerDiscardEnable = VK_FALSE;
+  // Anything aside from VK_POLYGON_MODE_FILL required GPU feature
+  rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+  // lineWidth higher than 1.0f required wideLines GPU feature
+  rasterizer.lineWidth = 1.0f;
+  rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+  rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+  rasterizer.depthBiasEnable = VK_FALSE;
 
   vkDestroyShaderModule (device, fragShaderModule, nullptr);
   vkDestroyShaderModule (device, vertShaderModule, nullptr);
