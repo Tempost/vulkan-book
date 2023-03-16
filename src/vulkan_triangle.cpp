@@ -59,6 +59,7 @@ VulkanTriangleApplication::initVulkan ()
   createLogicalDevice ();
   createSwapChain ();
   createImageViews ();
+  createRenderPass ();
   createGraphicsPipeline ();
 }
 
@@ -367,8 +368,115 @@ VulkanTriangleApplication::createGraphicsPipeline ()
   rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
   rasterizer.depthBiasEnable = VK_FALSE;
 
+  VkPipelineMultisampleStateCreateInfo multisampling{};
+  multisampling.sType
+      = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+  multisampling.sampleShadingEnable = VK_FALSE;
+  multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+  // Here to alphaToOneEnable are optional
+  multisampling.minSampleShading = 1.0f;
+  multisampling.pSampleMask = nullptr;
+  multisampling.alphaToCoverageEnable = VK_FALSE;
+  multisampling.alphaToOneEnable = VK_FALSE;
+
+  // NOTE: if blendEnable is set to VK_FALSE then the color from the frag
+  // shader is passed through unmodified
+  VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+  colorBlendAttachment.colorWriteMask
+      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT
+        | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+  colorBlendAttachment.blendEnable = VK_FALSE;
+
+  // NOTE: If wanting the implment alpha color blending
+  /* colorBlendAttachment.blendEnable = VK_TRUE; */
+  /* colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA; */
+  /* colorBlendAttachment.dstColorBlendFactor =
+   * VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA; */
+  /* colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD; */
+  /* colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE; */
+  /* colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; */
+  /* colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD; */
+
+  VkPipelineColorBlendStateCreateInfo colorBlending{};
+  colorBlending.sType
+      = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+  colorBlending.logicOpEnable = VK_FALSE;
+  colorBlending.attachmentCount = 1;
+  colorBlending.pAttachments = &colorBlendAttachment;
+
+  VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+  pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+
+  if (vkCreatePipelineLayout (device, &pipelineLayoutInfo, nullptr,
+                              &pipelineLayout)
+      != VK_SUCCESS)
+    {
+      throw std::runtime_error ("Failed to create pipeline layout");
+    }
+
+  VkGraphicsPipelineCreateInfo pipelineInfo{};
+  pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+  pipelineInfo.stageCount = 2;
+  pipelineInfo.pStages = shaderStages;
+  pipelineInfo.pVertexInputState = &vertexInputInfo;
+  pipelineInfo.pInputAssemblyState = &inputAssembly;
+  pipelineInfo.pViewportState = &viewportState;
+  pipelineInfo.pRasterizationState = &rasterizer;
+  pipelineInfo.pMultisampleState = &multisampling;
+  pipelineInfo.pDepthStencilState = nullptr;
+  pipelineInfo.pColorBlendState = &colorBlending;
+  pipelineInfo.pDynamicState = &dynamicState;
+  pipelineInfo.layout = pipelineLayout;
+  pipelineInfo.renderPass = renderPass;
+  pipelineInfo.subpass = 0;
+  pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+  pipelineInfo.basePipelineIndex = -1;
+
+  if (vkCreateGraphicsPipelines (device, VK_NULL_HANDLE, 1, &pipelineInfo,
+                                 nullptr, &graphicsPipeline)
+      != VK_SUCCESS)
+    {
+      throw std::runtime_error ("Failed to create graphics pipeline!");
+    }
+
   vkDestroyShaderModule (device, fragShaderModule, nullptr);
   vkDestroyShaderModule (device, vertShaderModule, nullptr);
+}
+
+void
+VulkanTriangleApplication::createRenderPass ()
+{
+  VkAttachmentDescription colorAttachment{};
+  colorAttachment.format = swapChainImageFormat;
+  colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+  colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+  colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+  colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+  VkAttachmentReference colorAttachmentRef{};
+  colorAttachmentRef.attachment = 0;
+  colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+  VkSubpassDescription subpass{};
+  subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+  subpass.colorAttachmentCount = 1;
+  subpass.pColorAttachments = &colorAttachmentRef;
+
+  VkRenderPassCreateInfo renderPassInfo{};
+  renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+  renderPassInfo.attachmentCount = 1;
+  renderPassInfo.pAttachments = &colorAttachment;
+  renderPassInfo.subpassCount = 1;
+  renderPassInfo.pSubpasses = &subpass;
+
+  if (vkCreateRenderPass (device, &renderPassInfo, nullptr, &renderPass)
+      != VK_SUCCESS)
+    {
+      throw std::runtime_error ("Failed to create render pass!");
+    }
 }
 
 bool
@@ -661,6 +769,10 @@ VulkanTriangleApplication::mainLoop ()
 void
 VulkanTriangleApplication::cleanup ()
 {
+  vkDestroyPipeline (device, graphicsPipeline, nullptr);
+  vkDestroyPipelineLayout (device, pipelineLayout, nullptr);
+  vkDestroyRenderPass (device, renderPass, nullptr);
+
   for (auto imageView : swapChainImageViews)
     {
       vkDestroyImageView (device, imageView, nullptr);

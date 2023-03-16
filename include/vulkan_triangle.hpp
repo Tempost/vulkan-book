@@ -23,6 +23,9 @@ private:
   VkSwapchainKHR swapChain;
   VkFormat swapChainImageFormat;
   VkExtent2D swapChainExtent;
+  VkRenderPass renderPass;
+  VkPipeline graphicsPipeline;
+  VkPipelineLayout pipelineLayout;
 
   const std::vector<const char *> validationLayers
       = { "VK_LAYER_KHRONOS_validation" };
@@ -66,6 +69,8 @@ private:
   void createImageViews ();
 
   void createGraphicsPipeline ();
+
+  void createRenderPass ();
 
   bool verifyExtensions (const char **glfwExtensions,
                          uint32_t glfwExtensionCount);
