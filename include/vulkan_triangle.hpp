@@ -26,7 +26,13 @@ private:
   VkRenderPass renderPass;
   VkPipeline graphicsPipeline;
   VkPipelineLayout pipelineLayout;
+  VkCommandPool commandPool;
+  VkCommandBuffer commandBuffer;
+  VkSemaphore imageAvailableSemaphore;
+  VkSemaphore renderFinishedSemaphore;
+  VkFence inFlightFence;
 
+  std::vector<VkFramebuffer> swapChainFramebuffers;
   const std::vector<const char *> validationLayers
       = { "VK_LAYER_KHRONOS_validation" };
 
@@ -71,6 +77,17 @@ private:
   void createGraphicsPipeline ();
 
   void createRenderPass ();
+
+  void createFramebuffers ();
+
+  void createCommandPool ();
+
+  void createCommandBuffer ();
+  void recordCommandBuffer (VkCommandBuffer buffer, uint32_t imageIndex);
+
+  void createSyncObjects ();
+
+  void drawFrame ();
 
   bool verifyExtensions (const char **glfwExtensions,
                          uint32_t glfwExtensionCount);
