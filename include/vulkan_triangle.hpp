@@ -6,13 +6,19 @@
 
 namespace VulkanApp
 {
+const int MAX_FRAMES_IN_FLIGHT = 2;
+const uint32_t WIDTH = 800;
+const uint32_t HEIGHT = 600;
 class VulkanTriangleApplication
 {
 
 public:
+  uint32_t currentFrame = 0;
+  bool framebufferResized = false;
   void run ();
 
 private:
+  VkDebugUtilsMessengerEXT debugMessenger;
   GLFWwindow *window;
   VkInstance instance;
   VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
@@ -27,12 +33,13 @@ private:
   VkPipeline graphicsPipeline;
   VkPipelineLayout pipelineLayout;
   VkCommandPool commandPool;
-  VkCommandBuffer commandBuffer;
-  VkSemaphore imageAvailableSemaphore;
-  VkSemaphore renderFinishedSemaphore;
-  VkFence inFlightFence;
 
+  std::vector<VkCommandBuffer> commandBuffers;
+  std::vector<VkSemaphore> imageAvailableSemaphores;
+  std::vector<VkSemaphore> renderFinishedSemaphores;
+  std::vector<VkFence> inFlightFences;
   std::vector<VkFramebuffer> swapChainFramebuffers;
+
   const std::vector<const char *> validationLayers
       = { "VK_LAYER_KHRONOS_validation" };
 
@@ -64,6 +71,10 @@ private:
 
   void initVulkan ();
 
+  void populateDebugMessengerCreateInfo (
+      VkDebugUtilsMessengerCreateInfoEXT &createInfo);
+  void setupDebugMessenger ();
+
   void createInstance ();
 
   void createSurface ();
@@ -71,6 +82,8 @@ private:
   void createLogicalDevice ();
 
   void createSwapChain ();
+  void recreateSwapChain ();
+  void cleanupSwapChain ();
 
   void createImageViews ();
 
@@ -82,7 +95,7 @@ private:
 
   void createCommandPool ();
 
-  void createCommandBuffer ();
+  void createCommandBuffers ();
   void recordCommandBuffer (VkCommandBuffer buffer, uint32_t imageIndex);
 
   void createSyncObjects ();

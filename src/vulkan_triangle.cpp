@@ -3,19 +3,70 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <iostream>
 #include <set>
 #include <stdexcept>
+#include <string>
 #include <vulkan/vulkan_core.h>
 using namespace VulkanApp;
-
-const uint32_t WIDTH = 800;
-const uint32_t HEIGHT = 600;
 
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
 #else
 const bool enableValidationLayers = true;
 #endif
+
+VkResult
+CreateDebugUtilsMessengerEXT (
+    VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo,
+    const VkAllocationCallbacks *pAllocator,
+    VkDebugUtilsMessengerEXT *pDebugMessenger)
+{
+  auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr (
+      instance, "vkCreateDebugUtilsMessengerEXT");
+  if (func != nullptr)
+    {
+      return func (instance, pCreateInfo, pAllocator, pDebugMessenger);
+    }
+  else
+    {
+      return VK_ERROR_EXTENSION_NOT_PRESENT;
+    }
+}
+
+void
+DestroyDebugUtilsMessengerEXT (VkInstance instance,
+                               VkDebugUtilsMessengerEXT debugMessenger,
+                               const VkAllocationCallbacks *pAllocator)
+{
+  auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr (
+      instance, "vkDestroyDebugUtilsMessengerEXT");
+  if (func != nullptr)
+    {
+      func (instance, debugMessenger, pAllocator);
+    }
+}
+
+static void
+framebufferResizeCallback (GLFWwindow *window, int width, int height)
+{
+  printf("%d, %d\n", width, height);
+  auto app = reinterpret_cast<VulkanTriangleApplication *> (
+      glfwGetWindowUserPointer (window));
+  app->framebufferResized = true;
+}
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL
+debugCallback (VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+               VkDebugUtilsMessageTypeFlagsEXT messageType,
+               const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
+               void *pUserData)
+{
+
+  std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+
+  return VK_FALSE;
+}
 
 static std::vector<char>
 readFile (const std::string &filename)
@@ -63,8 +114,42 @@ VulkanTriangleApplication::initVulkan ()
   createGraphicsPipeline ();
   createFramebuffers ();
   createCommandPool ();
-  createCommandBuffer ();
+  createCommandBuffers ();
   createSyncObjects ();
+}
+
+void
+VulkanTriangleApplication::populateDebugMessengerCreateInfo (
+    VkDebugUtilsMessengerCreateInfoEXT &createInfo)
+{
+  createInfo = {};
+  createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+  createInfo.messageSeverity
+      = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT
+        | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
+        | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+  createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
+                           | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
+                           | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+  createInfo.pfnUserCallback = debugCallback;
+}
+
+void
+VulkanTriangleApplication::setupDebugMessenger ()
+{
+
+  if (!enableValidationLayers)
+    return;
+
+  VkDebugUtilsMessengerCreateInfoEXT createInfo;
+  populateDebugMessengerCreateInfo (createInfo);
+
+  if (CreateDebugUtilsMessengerEXT (instance, &createInfo, nullptr,
+                                    &debugMessenger)
+      != VK_SUCCESS)
+    {
+      throw std::runtime_error ("failed to set up debug messenger!");
+    }
 }
 
 void
@@ -94,6 +179,24 @@ VulkanTriangleApplication::createInstance ()
 
   createInfo.enabledExtensionCount = glfwExtensionCount;
   createInfo.ppEnabledExtensionNames = glfwExtensions;
+  VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
+  if (enableValidationLayers)
+    {
+      createInfo.enabledLayerCount
+          = static_cast<uint32_t> (validationLayers.size ());
+      createInfo.ppEnabledLayerNames = validationLayers.data ();
+
+      populateDebugMessengerCreateInfo (debugCreateInfo);
+
+      createInfo.pNext
+          = (VkDebugUtilsMessengerCreateInfoEXT *)&debugCreateInfo;
+    }
+  else
+    {
+      createInfo.enabledLayerCount = 0;
+
+      createInfo.pNext = nullptr;
+    }
 
   if (enableValidationLayers)
     {
@@ -251,6 +354,31 @@ VulkanTriangleApplication::createSwapChain ()
 
   swapChainImageFormat = surfaceFormat.format;
   swapChainExtent = extent;
+}
+
+void
+VulkanTriangleApplication::recreateSwapChain ()
+{
+  vkDeviceWaitIdle (device);
+  cleanupSwapChain ();
+
+  createSwapChain ();
+  createImageViews ();
+  createFramebuffers ();
+}
+void
+VulkanTriangleApplication::cleanupSwapChain ()
+{
+  for (size_t i = 0; i < swapChainFramebuffers.size (); i++)
+    {
+      vkDestroyFramebuffer (device, swapChainFramebuffers[i], nullptr);
+    }
+  for (size_t i = 0; i < swapChainImageViews.size (); i++)
+    {
+      vkDestroyImageView (device, swapChainImageViews[i], nullptr);
+    }
+
+  vkDestroySwapchainKHR (device, swapChain, nullptr);
 }
 
 void
@@ -538,8 +666,10 @@ VulkanTriangleApplication::createCommandPool ()
 }
 
 void
-VulkanTriangleApplication::createCommandBuffer ()
+VulkanTriangleApplication::createCommandBuffers ()
 {
+  commandBuffers.resize (MAX_FRAMES_IN_FLIGHT);
+
   VkCommandBufferAllocateInfo allocInfo{};
   allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
   allocInfo.commandPool = commandPool;
@@ -551,9 +681,9 @@ VulkanTriangleApplication::createCommandBuffer ()
    * be used by other primary command buffers
    */
   allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-  allocInfo.commandBufferCount = 1;
+  allocInfo.commandBufferCount = (uint32_t)commandBuffers.size ();
 
-  if (vkAllocateCommandBuffers (device, &allocInfo, &commandBuffer)
+  if (vkAllocateCommandBuffers (device, &allocInfo, commandBuffers.data ())
       != VK_SUCCESS)
     {
       throw std::runtime_error ("Failed to allocate command buffers!");
@@ -569,7 +699,7 @@ VulkanTriangleApplication::recordCommandBuffer (VkCommandBuffer buffer,
 
   if (vkBeginCommandBuffer (buffer, &beginInfo) != VK_SUCCESS)
     {
-      throw std::runtime_error ("Failed to gegin recording command buffer!");
+      throw std::runtime_error ("Failed to begin recording command buffer!");
     }
 
   VkRenderPassBeginInfo renderPassInfo{};
@@ -595,12 +725,12 @@ VulkanTriangleApplication::recordCommandBuffer (VkCommandBuffer buffer,
   viewport.height = static_cast<float> (swapChainExtent.height);
   viewport.minDepth = 0.0f;
   viewport.maxDepth = 1.0f;
-  vkCmdSetViewport (commandBuffer, 0, 1, &viewport);
+  vkCmdSetViewport (buffer, 0, 1, &viewport);
 
   VkRect2D scissor{};
   scissor.offset = { 0, 0 };
   scissor.extent = swapChainExtent;
-  vkCmdSetScissor (commandBuffer, 0, 1, &scissor);
+  vkCmdSetScissor (buffer, 0, 1, &scissor);
 
   vkCmdDraw (buffer, 3, 1, 0, 0);
 
@@ -615,6 +745,10 @@ VulkanTriangleApplication::recordCommandBuffer (VkCommandBuffer buffer,
 void
 VulkanTriangleApplication::createSyncObjects ()
 {
+  imageAvailableSemaphores.resize (MAX_FRAMES_IN_FLIGHT);
+  renderFinishedSemaphores.resize (MAX_FRAMES_IN_FLIGHT);
+  inFlightFences.resize (MAX_FRAMES_IN_FLIGHT);
+
   VkSemaphoreCreateInfo semaphoreInfo{};
   semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
@@ -622,16 +756,20 @@ VulkanTriangleApplication::createSyncObjects ()
   fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
   fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-  if (vkCreateSemaphore (device, &semaphoreInfo, nullptr,
-                         &imageAvailableSemaphore)
-          != VK_SUCCESS
-      || vkCreateSemaphore (device, &semaphoreInfo, nullptr,
-                            &renderFinishedSemaphore)
-             != VK_SUCCESS
-      || vkCreateFence (device, &fenceInfo, nullptr, &inFlightFence)
-             != VK_SUCCESS)
+  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
-      throw std::runtime_error ("Failed to create sync objects!");
+      if (vkCreateSemaphore (device, &semaphoreInfo, nullptr,
+                             &imageAvailableSemaphores[i])
+              != VK_SUCCESS
+          || vkCreateSemaphore (device, &semaphoreInfo, nullptr,
+                                &renderFinishedSemaphores[i])
+                 != VK_SUCCESS
+          || vkCreateFence (device, &fenceInfo, nullptr, &inFlightFences[i])
+                 != VK_SUCCESS)
+        {
+          throw std::runtime_error (
+              "Failed to create sync objects for a frame!");
+        }
     }
 }
 
@@ -639,34 +777,46 @@ void
 VulkanTriangleApplication::drawFrame ()
 {
   // Wait for previous frame to have finished
-  vkWaitForFences (device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
-  vkResetFences (device, 1, &inFlightFence);
+  vkWaitForFences (device, 1, &inFlightFences[currentFrame], VK_TRUE,
+                   UINT64_MAX);
 
   uint32_t imageIndex;
-  vkAcquireNextImageKHR (device, swapChain, UINT64_MAX,
-                         imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
-  vkResetCommandBuffer (commandBuffer, 0);
-  recordCommandBuffer (commandBuffer, imageIndex);
+  VkResult result = vkAcquireNextImageKHR (
+      device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame],
+      VK_NULL_HANDLE, &imageIndex);
+
+  if (result == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+      recreateSwapChain ();
+      return;
+    }
+  else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+    {
+      throw std::runtime_error ("Failed to acquire swap chain image!");
+    }
+
+  vkResetFences (device, 1, &inFlightFences[currentFrame]);
+  vkResetCommandBuffer (commandBuffers[currentFrame], 0);
+  recordCommandBuffer (commandBuffers[currentFrame], imageIndex);
 
   VkSubmitInfo submitInfo{};
   submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-  VkSemaphore waitSemaphores[] = { imageAvailableSemaphore };
+  VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[currentFrame] };
   VkPipelineStageFlags waitStages[]
       = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-
   submitInfo.waitSemaphoreCount = 1;
-
   submitInfo.pWaitSemaphores = waitSemaphores;
   submitInfo.pWaitDstStageMask = waitStages;
   submitInfo.commandBufferCount = 1;
-  submitInfo.pCommandBuffers = &commandBuffer;
-  VkSemaphore signalSemaphores[] = { renderFinishedSemaphore };
+  submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
+  VkSemaphore signalSemaphores[] = { renderFinishedSemaphores[currentFrame] };
   submitInfo.signalSemaphoreCount = 1;
   submitInfo.pSignalSemaphores = signalSemaphores;
 
   // Submit command buffer to the graphics queue
-  if (vkQueueSubmit (graphicsQueue, 1, &submitInfo, inFlightFence)
+  if (vkQueueSubmit (graphicsQueue, 1, &submitInfo,
+                     inFlightFences[currentFrame])
       != VK_SUCCESS)
     {
       throw std::runtime_error ("Failed to submit draw command buffer!");
@@ -674,16 +824,27 @@ VulkanTriangleApplication::drawFrame ()
 
   VkPresentInfoKHR presentInfo{};
   presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-
   presentInfo.waitSemaphoreCount = 1;
   presentInfo.pWaitSemaphores = signalSemaphores;
-
   VkSwapchainKHR swapChains[] = { swapChain };
   presentInfo.swapchainCount = 1;
   presentInfo.pSwapchains = swapChains;
   presentInfo.pImageIndices = &imageIndex;
 
-  vkQueuePresentKHR (presentQueue, &presentInfo);
+  result = vkQueuePresentKHR (presentQueue, &presentInfo);
+
+  if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR
+      || framebufferResized)
+    {
+      framebufferResized = false;
+      recreateSwapChain ();
+    }
+  else if (result != VK_SUCCESS)
+    {
+      throw std::runtime_error ("Failed to present swap chain image!");
+    }
+
+  currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
 bool
@@ -959,9 +1120,10 @@ VulkanTriangleApplication::initWindow ()
 {
   glfwInit ();
   glfwWindowHint (GLFW_CLIENT_API, GLFW_NO_API);
-  glfwWindowHint (GLFW_RESIZABLE, GLFW_FALSE);
 
   window = glfwCreateWindow (WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+  glfwSetWindowUserPointer (window, this);
+  glfwSetFramebufferSizeCallback (window, framebufferResizeCallback);
 }
 
 void
@@ -979,32 +1141,30 @@ VulkanTriangleApplication::mainLoop ()
 void
 VulkanTriangleApplication::cleanup ()
 {
-  vkDestroySemaphore (device, imageAvailableSemaphore, nullptr);
-  vkDestroySemaphore (device, renderFinishedSemaphore, nullptr);
-  vkDestroyFence (device, inFlightFence, nullptr);
-
-  vkDestroyCommandPool (device, commandPool, nullptr);
-
-  for (auto framebuffer : swapChainFramebuffers)
-    {
-      vkDestroyFramebuffer (device, framebuffer, nullptr);
-    }
+  cleanupSwapChain ();
 
   vkDestroyPipeline (device, graphicsPipeline, nullptr);
   vkDestroyPipelineLayout (device, pipelineLayout, nullptr);
+
   vkDestroyRenderPass (device, renderPass, nullptr);
 
-  for (auto imageView : swapChainImageViews)
+  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
-      vkDestroyImageView (device, imageView, nullptr);
+      vkDestroySemaphore (device, imageAvailableSemaphores[i], nullptr);
+      vkDestroySemaphore (device, renderFinishedSemaphores[i], nullptr);
+      vkDestroyFence (device, inFlightFences[i], nullptr);
     }
 
-  vkDestroySwapchainKHR (device, swapChain, nullptr);
+  vkDestroyCommandPool (device, commandPool, nullptr);
 
   vkDestroyDevice (device, nullptr);
 
-  vkDestroySurfaceKHR (instance, surface, nullptr);
+  if (enableValidationLayers)
+    {
+      DestroyDebugUtilsMessengerEXT (instance, debugMessenger, nullptr);
+    }
 
+  vkDestroySurfaceKHR (instance, surface, nullptr);
   vkDestroyInstance (instance, nullptr);
 
   glfwDestroyWindow (window);
